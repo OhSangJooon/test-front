@@ -21,11 +21,14 @@ function App() {
     const client = new RSocketClient({
       transport: new RSocketWebSocketClient({ url: 'ws://localhost:7010/rsocket' }),
       setup: {
-        data: JSON.stringify({ userId }), // ✅ DTO로 setup.payload 전송
         dataMimeType: 'application/json',
         metadataMimeType: 'message/x.rsocket.routing.v0',
         keepAlive: 60000,
         lifetime: 180000,
+        payload: {
+          data: { userId }, // ✅ 연결 시 보낼 데이터
+          metadata: '', // routing X
+        }
       },
       serializers: {
         data: JsonSerializer,
@@ -37,17 +40,14 @@ function App() {
       onComplete: socket => {
         setStatus('✅ RSocket 연결 완료');
 
-        const route = 'queue.status';
-        const metadata = Buffer.concat([
-          Buffer.from([route.length]), // route 길이 prefix
-          Buffer.from(route),
-        ]);
+        const route = "queue.status";
+        const metadata = String.fromCharCode(route.length) + route;
 
-        console.log('🔧 보내는 데이터:', `"${userId}"`);  // data 확인
-        console.log('🔧 보내는 metadata:', metadata);    // metadata 확인
+        // console.log('🔧 보내는 데이터:', `"${userId}"`);  // data 확인
+        // console.log('🔧 보내는 metadata:', metadata);    // metadata 확인
 
         socket.requestStream({
-          data: JSON.stringify({ userId }),
+          data: {userId},
           metadata: metadata,
         }).subscribe({
           onNext: payload => {
@@ -67,7 +67,7 @@ function App() {
         console.error('❌ 연결 실패:', error);
         setStatus('🚫 연결 실패');
       },
-    });
+    })
   };
 
   return (
