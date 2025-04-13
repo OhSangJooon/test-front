@@ -2,15 +2,25 @@ import { useState, useRef } from 'react';
 import {
   RSocketClient,
   JsonSerializer,
-  IdentitySerializer,
+  encodeCompositeMetadata,
+  encodeRoute,
+  WellKnownMimeType,
+  encodeBearerAuthMetadata,
 } from 'rsocket-core';
 import RSocketWebSocketClient from 'rsocket-websocket-client';
+
+const metadataSerializer = {
+  serialize: (value) => value instanceof Uint8Array ? value : Buffer.from(value),
+  deserialize: (value) => value,
+};
+
 
 function App() {
   const [status, setStatus] = useState('대기 중...');
   const [queue, setQueue] = useState([]);
   const [userId, setUserId] = useState('');
   const socketRef = useRef(null);
+
 
   // 대기열 진입 시 연결 및 스트림 구독
   const connectQueue = () => {
@@ -19,18 +29,41 @@ function App() {
       return;
     }
 
+    const jwt = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ0NTYwMzg4LCJleHAiOjE3NDQ2MDM1ODgsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.7cUPVX9j-7X1Y0uN3r_1YsRQirqvDsDN2imXSbLX-1A";
+    const route = "queue.status";
+
+    const AUTH_MIME = "message/x.rsocket.authentication.v0";
+    const ROUTE_MIME = "message/x.rsocket.routing.v0";
+
+    // Bearer 접두사를 포함해서 토큰을 생성
+    // const authMetadata = Buffer.from("Bearer " + jwt, "utf8");
+    const routeMetadata = encodeRoute(route);
+
+    console.log("WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION", WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION);
+    console.log("WellKnownMimeType.MESSAGE_RSOCKET_ROUTING", WellKnownMimeType.MESSAGE_RSOCKET_ROUTING);
+
+    const metadata = encodeCompositeMetadata([
+      [AUTH_MIME, encodeBearerAuthMetadata(jwt)],
+      [ROUTE_MIME, routeMetadata],
+    ]);
+
+    // const metadata = encodeCompositeMetadata([
+    //   [AUTH_MIME, authMetadata],
+    //   [ROUTE_MIME, routeMetadata]
+    // ]);
+
     // 새로 연결한 RSocketClient 생성
     const client = new RSocketClient({
       transport: new RSocketWebSocketClient({ url: 'ws://localhost:7010/rsocket' }),
       setup: {
         dataMimeType: 'application/json',
-        metadataMimeType: 'message/x.rsocket.routing.v0',
+        metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
         keepAlive: 60000,
         lifetime: 180000,
       },
       serializers: {
         data: JsonSerializer,
-        metadata: IdentitySerializer,
+        metadata: metadataSerializer,
       },
     });
 
@@ -39,11 +72,11 @@ function App() {
         setStatus('✅ RSocket 연결 완료');
         socketRef.current = s;  // 연결된 소켓을 ref에 저장
 
-        const route = "queue.status";
-        const metadata = String.fromCharCode(route.length) + route;
-
         s.requestStream({
-          data: { userId },
+          data: {
+            userId: userId,
+            channel: "queue.golf"
+          },
           metadata: metadata,
         }).subscribe({
           onSubscribe: sub => {
@@ -81,7 +114,10 @@ function App() {
     const metadata = String.fromCharCode(route.length) + route;
 
     socketRef.current.requestResponse({
-      data: { userId },
+      data: {
+        userId: userId,
+        channel: "queue.golf"
+      },
       metadata: metadata,
     }).subscribe({
       // onSubscribe: sub => {
