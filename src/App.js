@@ -1,45 +1,28 @@
-import { useState, useRef } from 'react';
+import {useRef, useState} from 'react';
 import {
-  RSocketClient,
-  JsonSerializer,
+  encodeBearerAuthMetadata,
   encodeCompositeMetadata,
   encodeRoute,
-  WellKnownMimeType,
-  encodeBearerAuthMetadata, IdentitySerializer,
+  JsonSerializer,
+  IdentitySerializer,
+  RSocketClient,
+  BufferEncoders,
 } from 'rsocket-core';
 import RSocketWebSocketClient from 'rsocket-websocket-client';
-import {
-  MESSAGE_RSOCKET_AUTHENTICATION,
-  MESSAGE_RSOCKET_ROUTING
-} from "rsocket-core/build/WellKnownMimeType";
+import {WellKnownMimeType} from 'rsocket-composite-metadata';
+import { Buffer } from 'buffer';
+
+// npm install rsocket-composite-metadata 해주기
+
+const transport = new RSocketWebSocketClient(
+    { url: 'ws://localhost:7010/rsocket' }, // 첫 번째 인자: options
+    BufferEncoders,                         // 두 번째 인자: encoders
+);
 
 const metadataSerializer = {
   serialize: (value) => value instanceof Uint8Array ? value : Buffer.from(value),
   deserialize: (value) => value,
 };
-
-const metadataSerializer2 = {
-  serialize: (value) => {
-    if (typeof value === 'string') {
-      return value;
-    }
-    if (value instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(value))) {
-      return toLatin1String(value);
-    }
-    return String(value);
-  },
-  deserialize: (value) => value,
-};
-
-function toLatin1String(buffer) {
-  // buffer가 Uint8Array나 Buffer인 경우 각 바이트를 문자로 매핑합니다.
-  let result = '';
-  for (let i = 0; i < buffer.length; i++) {
-    result += String.fromCharCode(buffer[i]);
-  }
-  return result;
-}
-
 
 function App() {
   const [status, setStatus] = useState('대기 중...');
@@ -62,12 +45,9 @@ function App() {
     // const authMetadata = Buffer.from("Bearer " + jwt, "utf8");
     const routeMetadata = encodeRoute(route);
 
-    console.log("WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION", MESSAGE_RSOCKET_AUTHENTICATION);
-    console.log("WellKnownMimeType.MESSAGE_RSOCKET_ROUTING", MESSAGE_RSOCKET_ROUTING);
-
     const metadata = encodeCompositeMetadata([
-      [MESSAGE_RSOCKET_AUTHENTICATION, encodeBearerAuthMetadata(jwt)],
-      [MESSAGE_RSOCKET_ROUTING, routeMetadata],
+      [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, encodeBearerAuthMetadata(jwt)],
+      [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadata],
     ]);
 
     // const metadata = encodeCompositeMetadata([
@@ -166,28 +146,34 @@ function App() {
   /// 테스트 큐
   const testQueue = () => {
     // JWT 토큰과 목적 라우트 지정
-    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ0ODk5MTA5LCJleHAiOjE3NDQ5NDIzMDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.zjUlOtkcFuS-I0kk7GjShMBzlmStUuNysyTMEbbEoVE";
-    const route = "queue.test";
+    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ1MTY5MTIxLCJleHAiOjE3NDUyMTIzMjEsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.E1iEtMbLVAKxoPS4KxnzRXiBp9Ug7Ukrmt4iLofOwyA";
+    // const jwtToken = "sadsadawe2@#$@EDWAD@DSAda4e21sad2qC@";
+    const route = "queue.status";
 
     const authMetadataBuffer = encodeBearerAuthMetadata(jwtToken);  // Buffer 또는 Uint8Array
     const routeMetadataBuffer = encodeRoute(route);
 
     const compositeMetadata = encodeCompositeMetadata([
-      [MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer],
-      [MESSAGE_RSOCKET_ROUTING, routeMetadataBuffer],
+      [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer],
+      [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadataBuffer],
     ]);
+
+    const setupMetadata = encodeCompositeMetadata([[WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer]]);
+
+    console.log(setupMetadata);
+
     // RSocket 클라이언트 설정
     const client = new RSocketClient({
-      transport: new RSocketWebSocketClient({ url: 'ws://localhost:7010/rsocket' }),
+      transport,
       setup: {
-        dataMimeType: 'application/json',
-        metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
+        dataMimeType: 'application/json', // 'application/json'
+        metadataMimeType: 'message/x.rsocket.composite-metadata.v0', // 'message/x.rsocket.composite-metadata.v0'
         keepAlive: 60000,
         lifetime: 180000,
-      },
-      serializers: {
-        data: JsonSerializer,
-        metadata: metadataSerializer2,
+        payload: {
+          data: null,
+          metadata: setupMetadata
+        },
       },
     });
 
@@ -210,6 +196,9 @@ function App() {
           },
           onError: error => {
             console.error("❌ 스트림 에러:", error);
+            if(error.source.explanation === "REJECTED_SETUP") {
+              console.log("❌ 인증 실패");
+            }
           },
           onComplete: () => {
             console.log("🎉 스트림 종료");
@@ -247,5 +236,7 @@ function App() {
       </div>
   );
 }
+
+
 
 export default App;

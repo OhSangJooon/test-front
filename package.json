@@ -11,6 +11,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-scripts": "5.0.1",
+    "rsocket-composite-metadata": "^1.0.0-alpha.3",
     "rsocket-core": "^0.0.29-alpha.0",
     "rsocket-flowable": "^0.0.29-alpha.0",
     "rsocket-websocket-client": "^0.0.29-alpha.0",
@@ -41,6 +42,7 @@
     ]
   },
   "devDependencies": {
+    "@types/rsocket-core": "^0.0.11",
     "customize-cra": "^1.0.0",
     "react-app-rewired": "^2.2.1"
   }
