@@ -32,9 +32,9 @@ function App() {
       return;
     }
 
-    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ1MzI5OTQ5LCJleHAiOjE3NDUzNzMxNDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.U9mFKWQGXYd_ZwRGAHWqZNRNQupbD6M_zIk9LKv5oZs";
+    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ1NTExMjg5LCJleHAiOjE3NDU1NTQ0ODksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.ZVRYqyaXDywuOpmno5EzKKhZwd9EGQY4pd6AxBzcvGM";
     const route = "queue.status";
-    const data = { channel: "sadsad" };
+    const data = { channel: "golf-ff" };
 
     // Bearer 접두사를 포함해서 토큰을 생성
     // const authMetadataBuffer = Buffer.from("Bearer " + jwt, "utf8");
@@ -140,74 +140,6 @@ function App() {
         socketRef.current = null;
         setStatus('대기 중...');
       }
-    });
-  };
-
-  /// 테스트 큐
-  const testQueue = () => {
-    // JWT 토큰과 목적 라우트 지정
-    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ1MzI5OTQ5LCJleHAiOjE3NDUzNzMxNDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.U9mFKWQGXYd_ZwRGAHWqZNRNQupbD6M_zIk9LKv5oZs";
-    const route = "queue.status";
-    const data = { userId: "ttt12", channel: "sadsad" };
-
-    const authMetadataBuffer = encodeBearerAuthMetadata(jwtToken);  // Buffer 또는 Uint8Array
-    const routeMetadataBuffer = encodeRoute(route);
-
-    const compositeMetadata = encodeCompositeMetadata([
-      [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer],
-      [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadataBuffer],
-    ]);
-
-    const setupMetadata = encodeCompositeMetadata([[WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer]]);
-
-    // RSocket 클라이언트 설정
-    const client = new RSocketClient({
-      transport,
-      setup: {
-        dataMimeType: 'application/json', // 'application/json'
-        metadataMimeType: 'message/x.rsocket.composite-metadata.v0', // 'message/x.rsocket.composite-metadata.v0'
-        keepAlive: 60000,
-        lifetime: 180000,
-        payload: {
-          data: null,
-          metadata: setupMetadata
-        },
-        serializers: {
-          data: JsonSerializer,
-          metadata: IdentitySerializer,
-        }
-      },
-    });
-
-// 클라이언트 연결 및 requestStream 요청 예제
-    client.connect().subscribe({
-      onComplete: socket => {
-        console.log("✅ RSocket 연결 완료");
-
-        // requestStream 요청 - data에는 테스트로 전송할 payload를 넣음
-        socket.requestStream({
-          // data: data,
-          data: Buffer.from(JSON.stringify(data)),
-          metadata: compositeMetadata,
-        }).subscribe({
-          onSubscribe: sub => {
-            console.log("🔗 스트림 구독 시작");
-            sub.request(2147483646); // 최대 요청량 전달
-          },
-          onNext: payload => {
-            console.log("✅ 받은 데이터:", payload.data);
-          },
-          onError: error => {
-            console.error("❌ 스트림 에러:", error);
-          },
-          onComplete: () => {
-            console.log("🎉 스트림 종료");
-          },
-        });
-      },
-      onError: error => {
-        console.error("🚫 연결 실패:", error);
-      },
     });
   };
 
