@@ -15,7 +15,8 @@ import { Buffer } from 'buffer';
 // npm install rsocket-composite-metadata 해주기
 
 const transport = new RSocketWebSocketClient(
-    { url: 'ws://localhost:7010/rsocket' }, // 첫 번째 인자: options
+    // { url: 'ws://localhost:7010/rsocket' }, // local 테스트
+    { url: 'wss://queue.pass-dev-aptner.com/rsocket' }, // 개발서버
     BufferEncoders,                         // 두 번째 인자: encoders
 );
 
@@ -90,9 +91,11 @@ function App() {
           },
           onError: error => {
             console.error('❌ 스트림 에러:', error);
+            const errorMsg = JSON.parse(error.source.message);
+
             socketRef.current.close();
             socketRef.current = null;
-            setStatus('❌ 스트림 에러');
+            setStatus('❌ 스트림 에러 : ' + errorMsg.detail);
           },
           onComplete: () => {
             setStatus('🎉 입장 가능! 스트림 종료');
@@ -106,7 +109,7 @@ function App() {
     });
   };
 
-  // 대기열 나가기 시 연결된 소켓을 이용해 exit 요청을 보냄
+  // 대기열 나가기 시 연결된 소켓을 이용해 exit 요청을 보냄 (호출 예시 - 백엔드 개선 필요)
   const exitQueue = () => {
     if (!socketRef.current) {
       alert('연결이 되어있지 않습니다.');
