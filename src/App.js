@@ -24,22 +24,32 @@ function App() {
   const [status, setStatus] = useState('대기 중...');
   const [queue, setQueue] = useState([]);
   const [totalWating, setTotalWating] = useState(0);
-  const [userId, setUserId] = useState('');
   const [testCount, setTestCount] = useState(0);
   const [successCount, setSuccessCount] = useState(0);
   const [failCount, setFailCount] = useState(0);
   const socketRef = useRef(null);
+  const retryRef = useRef(0);
+  const MAX_RETRY = 3;
+
+  const cleanupSocket = () => {
+    if (socketRef.current) {
+      socketRef.current.close();
+      socketRef.current = null;
+      setStatus('🔌 연결 종료됨');
+    }
+  };
+
 
   // 대기열 진입 시 연결 및 스트림 구독
   const connectQueue = () => {
-    if (!userId) {
-      alert('사용자 ID를 입력해주세요');
+    if (socketRef.current) {
+      console.warn('⏳ 이미 연결 중입니다.');
       return;
     }
 
-    const jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2MDgxNTI2LCJleHAiOjE3NDYxMjQ3MjYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.Zt-1RPFKnOn0yTM2G_QHNTNmsdlfPjUa6f84pJgy60k";
+    const jwtToken = "1eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2MDgxNTI2LCJleHAiOjE3NDYxMjQ3MjYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.Zt-1RPFKnOn0yTM2G_QHNTNmsdlfPjUa6f84pJgy60k";
     const route = "queue.status";
-    const data = { channel: "golf-ff", facilityId: 10000001 };
+    const data = { channel: "golf-first", facilityId: 10000001 };
 
     // Bearer 접두사를 포함해서 토큰을 생성
     // const authMetadataBuffer = Buffer.from("Bearer " + jwt, "utf8");
@@ -52,9 +62,14 @@ function App() {
     ]);
     const setupMetadata = encodeCompositeMetadata([[WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer]]);
 
-    // 새로 연결한 RSocketClient 생성
+    const dataPayload = Buffer.from(JSON.stringify(data));
+
     const client = new RSocketClient({
-      transport,
+      transport: new RSocketWebSocketClient(
+          { url: 'ws://localhost:7010/rsocket' }
+          // { url: 'wss://queue.pass-dev-aptner.com/rsocket' }, // 개발서버
+          , BufferEncoders
+      ),
       setup: {
         dataMimeType: 'application/json',
         metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
@@ -72,43 +87,63 @@ function App() {
     });
 
     client.connect().subscribe({
-      onComplete: s => {
+      onComplete: socket => {
         setStatus('✅ RSocket 연결 완료');
-        socketRef.current = s;  // 연결된 소켓을 ref에 저장
+        socketRef.current = socket;
 
-        s.requestStream({
-          data: Buffer.from(JSON.stringify(data)),
+        const stream = socket.requestStream({
+          data: dataPayload,
           metadata: compositeMetadata,
-        }).subscribe({
-          onSubscribe: sub => {
-            console.log('🔗 스트림 구독 시작', sub);
-            sub.request(2147483646); // 최대 요청량
-          },
+        });
+
+        stream.subscribe({
+          onSubscribe: sub => sub.request(2147483647),
           onNext: payload => {
-            console.log('✅ 상태 payload:', payload);
-            console.log('✅ 상태 Buffer:', payload.data);
-            console.log('================= 파싱 시작 ================= ');
+            retryRef.current = 0;
             const payloadData = JSON.parse(payload.data.toString('utf8'));
-            console.log('✅ 받은 상태:', payloadData);
-            console.log('================= 파싱 종료 ================= ');
             setQueue(prev => [...prev, payloadData]);
+            setTotalWating(payloadData.totalWaiting);
+            console.log(`📦 순번: ${payloadData.position}, 총 대기: ${payloadData.totalWaiting}`);
           },
           onError: error => {
-            console.error('❌ 스트림 에러:', error);
-            const errorMsg = JSON.parse(error.source.message);
+            const errMsg = error.message || '';
+            const errData = error.source?.data?.toString?.('utf8') || '';
 
-            socketRef.current.close();
-            socketRef.current = null;
-            setStatus('❌ 스트림 에러 : ' + errorMsg.detail);
+            if (errMsg.includes('REJECTED_SETUP') || errData.includes('UNAUTHORIZED')) {
+              console.warn('🚫 인증 실패 - 재연결 중단');
+              setStatus('🚫 인증 실패: 재인증 필요');
+              cleanupSocket();
+              return;
+            }
+
+            console.error('❌ 스트림 오류:', errMsg);
+            cleanupSocket();
+
+            if (++retryRef.current < MAX_RETRY) {
+              console.log(`스트림 실패! 소켓 재연결 시도 (${retryRef.current})`);
+              setTimeout(connectQueue, 3000);
+            } else {
+              setStatus('❌ 스트림 재시도 초과 스트림 종료');
+              cleanupSocket();
+            }
           },
           onComplete: () => {
+            console.log('🎉 스트림 정상 종료');
+            retryRef.current = 0;
             setStatus('🎉 입장 가능! 스트림 종료');
           },
         });
       },
       onError: error => {
-        console.error('❌ 연결 실패:', error);
-        setStatus('🚫 연결 실패');
+        console.error(`❌ 연결 실패 (${retryRef.current + 1}/${MAX_RETRY}):`, error);
+        cleanupSocket();
+
+        if (++retryRef.current < MAX_RETRY) {
+          console.log(`소켓 연결 실패! 소켓 연결 재시도 (${retryRef.current})`);
+          setTimeout(connectQueue, 3000);
+        } else {
+          setStatus('❌ 최대 재시도 초과');
+        }
       },
     });
   };
@@ -138,58 +173,74 @@ function App() {
         [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer],
       ]);
 
-      const client = new RSocketClient({
-        transport: new RSocketWebSocketClient({ url: WS_URL }, BufferEncoders),
-        setup: {
-          dataMimeType: 'application/json',
-          metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
-          keepAlive: 90000,
-          lifetime: 270000,
-          payload: {
-            data: null,
-            metadata: setupMetadata,
-          },
-          serializers: {
-            data: JsonSerializer,
-            metadata: IdentitySerializer,
-          },
-        },
-      });
+      // 재연결 로직 변수
+      let retryCount = 0;
+      const maxRetry = 3;
 
-      client.connect().subscribe({
-        onComplete: socket => {
-          const sub = socket.requestStream({
-            data: Buffer.from(JSON.stringify(data)),
-            metadata: compositeMetadata,
-          });
+      const connect = () => {
+        const client = new RSocketClient({
+          transport: new RSocketWebSocketClient({ url: WS_URL }, BufferEncoders),
+          setup: {
+            dataMimeType: 'application/json',
+            metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
+            keepAlive: 90000,
+            lifetime: 270000,
+            payload: {
+              data: null,
+              metadata: setupMetadata,
+            },
+            serializers: {
+              data: JsonSerializer,
+              metadata: IdentitySerializer,
+            },
+          },
+        });
 
-          sub.subscribe({
-            onSubscribe: s => s.request(2147483647),
-            onNext: payload => {
-              const payloadData = JSON.parse(payload.data.toString('utf8'));
-              setQueue(prev => [...prev, payloadData]);
-              const totWating = payloadData.totalWaiting;
-              setTotalWating(p => totWating);
-              console.log(`✅ ${i} 번째 회원 순번 : ${payloadData.position}, 총 대기 인원 : ${totWating}`);
-            },
-            onError: error => {
-              console.error(`❌${i} 번째 회원 ${userId} error:`, error);
-              setFailCount(prev => prev + 1);
-              socket.close();            // 연결 종료
-            },
-            onComplete: () => {
-              setSuccessCount(prev => prev + 1);
-              setTimeout(() => {
-                socket.close();
-              }, leaveAfter * 1000);
+        client.connect().subscribe({
+          onComplete: socket => {
+            retryCount = 0; // 연결 성공 시 retry 초기화
+
+            const sub = socket.requestStream({
+              data: Buffer.from(JSON.stringify(data)),
+              metadata: compositeMetadata,
+            });
+
+            sub.subscribe({
+              onSubscribe: s => s.request(2147483647),
+              onNext: payload => {
+                const payloadData = JSON.parse(payload.data.toString('utf8'));
+                setQueue(prev => [...prev, payloadData]);
+                const totWating = payloadData.totalWaiting;
+                setTotalWating(p => totWating);
+                console.log(`✅ ${i} 번째 회원 순번 : ${payloadData.position}, 총 대기 인원 : ${totWating}`);
+              },
+              onError: error => {
+                console.error(`❌${i} 번째 회원 ${userId} error:`, error);
+                setFailCount(prev => prev + 1);
+                socket.close();            // 연결 종료
+              },
+              onComplete: () => {
+                setSuccessCount(prev => prev + 1);
+                setTimeout(() => {
+                  socket.close();
+                }, leaveAfter * 1000);
+              }
+            });
+          },
+          onError: error => {
+            console.error(`연결 실패 (${retryCount + 1}/${maxRetry}):`, error);
+            setStatus(`연결 실패, 재시도 중... (${retryCount + 1}/${maxRetry})`);
+            if (++retryCount <= maxRetry) {
+              setTimeout(connect, 3000); // 3초 후 재시도
+            } else {
+              setStatus('최대 재시도 횟수 초과로 연결 포기');
             }
-          });
-        },
-        onError: error => {
-          setFailCount(prev => prev + 1);
-          console.error(`🚫 connection failed:`, error);
-        },
-      });
+          },
+        });
+
+      };
+
+      connect(); // 최초 연결 시도
     } // 모든 요청은 거의 동시에 발생
   }
 
@@ -205,7 +256,6 @@ function App() {
 
     socketRef.current.requestResponse({
       data: {
-        userId: userId,
         channel: "queue.golf"
       },
       metadata: metadata,
@@ -234,13 +284,6 @@ function App() {
       <div style={{ padding: '2rem' }}>
         <h1>🎯 RSocket 대기열 테스트</h1>
         <div style={{ marginBottom: '1rem' }}>
-          <input
-              type="text"
-              placeholder="사용자 ID 입력"
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              style={{ marginRight: '0.5rem' }}
-          />
           <button onClick={connectQueue}>대기열 진입</button>
           <button onClick={test2}>대기열 테스트</button>
           <button onClick={exitQueue}>대기열 나가기</button>
