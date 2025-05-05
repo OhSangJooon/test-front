@@ -152,11 +152,11 @@ function App() {
     const TEST_USER_COUNT = testCount; // 테스트 수량: 100, 1000, 5000, 10000 등으로 조정 가능
     const WS_URL = 'ws://localhost:7010/rsocket';
     const ROUTE = 'queue.test';
-    const CHANNEL = 'golf-first';
+    const CHANNEL = 'GOLF_FIRST_COME';
     const JWT_TOKEN = 'test';
 
     const generateUserId = () => '11' + Math.floor(100000 + Math.random() * 900000);
-    const getRandomLeaveSeconds = () => Math.floor(Math.random() * (60 - 20 + 1)) + 20; // 최소 20초 ~ 60초
+    const getRandomLeaveSeconds = () => Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 최소 20초 ~ 60초
 
     for (let i = 1; i < TEST_USER_COUNT+1; i++) {
       const userId = generateUserId();
@@ -177,14 +177,14 @@ function App() {
       let retryCount = 0;
       const maxRetry = 3;
 
-      const connect = () => {
+      function attemptConnection() {
         const client = new RSocketClient({
           transport: new RSocketWebSocketClient({ url: WS_URL }, BufferEncoders),
           setup: {
             dataMimeType: 'application/json',
             metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
-            keepAlive: 90000,
-            lifetime: 270000,
+            keepAlive: 10000,
+            lifetime: 30000,
             payload: {
               data: null,
               metadata: setupMetadata,
@@ -198,8 +198,6 @@ function App() {
 
         client.connect().subscribe({
           onComplete: socket => {
-            retryCount = 0; // 연결 성공 시 retry 초기화
-
             const sub = socket.requestStream({
               data: Buffer.from(JSON.stringify(data)),
               metadata: compositeMetadata,
@@ -215,11 +213,18 @@ function App() {
                 console.log(`✅ ${i} 번째 회원 순번 : ${payloadData.position}, 총 대기 인원 : ${totWating}`);
               },
               onError: error => {
-                console.error(`❌${i} 번째 회원 ${userId} error:`, error);
-                setFailCount(prev => prev + 1);
-                socket.close();            // 연결 종료
+                console.log(`❌ ${userId} 스트림 에러: ${error.message}`);
+                if (++retryCount <= MAX_RETRY) {
+                  console.log(`🔁 ${userId} 스트림 재시도 ${retryCount}/3`);
+                  setTimeout(attemptConnection, 10000); // 소켓 완전 재시작
+                } else {
+                  console.error(`❌${i} 번째 회원 ${userId} error:`, error);
+                  setFailCount(prev => prev + 1);
+                  socket.close();
+                }
               },
               onComplete: () => {
+                console.error("완료에 진입함!");
                 setSuccessCount(prev => prev + 1);
                 setTimeout(() => {
                   socket.close();
@@ -231,16 +236,16 @@ function App() {
             console.error(`연결 실패 (${retryCount + 1}/${maxRetry}):`, error);
             setStatus(`연결 실패, 재시도 중... (${retryCount + 1}/${maxRetry})`);
             if (++retryCount <= maxRetry) {
-              setTimeout(connect, 3000); // 3초 후 재시도
+              setTimeout(attemptConnection, 5000); // 5초 후 재시도
             } else {
               setStatus('최대 재시도 횟수 초과로 연결 포기');
             }
           },
         });
+      }
 
-      };
 
-      connect(); // 최초 연결 시도
+      attemptConnection(); // 최초 연결 시도
     } // 모든 요청은 거의 동시에 발생
   }
 
