@@ -83,8 +83,8 @@ function App() {
       setup: {
         dataMimeType: 'application/json',
         metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
-        keepAlive: 180000,
-        lifetime: 720000,
+        keepAlive: 180_000,
+        lifetime: 720_000,
         payload: {
           data: null,
           metadata: setupMetadata
