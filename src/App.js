@@ -14,12 +14,6 @@ import { Buffer } from 'buffer';
 
 // npm install rsocket-composite-metadata 해주기
 
-const transport = new RSocketWebSocketClient(
-    { url: 'ws://localhost:7010/rsocket' }, // local 테스트
-    // { url: 'wss://queue.pass-dev-aptner.com/rsocket' }, // 개발서버
-    BufferEncoders,                         // 두 번째 인자: encoders
-);
-
 function App() {
   const [status, setStatus] = useState('대기 중...');
   const [queue, setQueue] = useState([]);
@@ -28,14 +22,21 @@ function App() {
   const [testCount, setTestCount] = useState(0);
   const [successCount, setSuccessCount] = useState(0);
   const [failCount, setFailCount] = useState(0);
+
   const socketRef = useRef(null);
   const retryRef = useRef(0);
-  const MAX_RETRY = 3;
+  const heartbeatIntervalRef = useRef(null);
+
+
+  const MAX_RETRY = 10;
+  const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
+  // const WS_URL = 'ws://192.168.0.31:7010/rsocket';
 
   const cleanupSocket = () => {
     if (socketRef.current) {
       socketRef.current.close();
       socketRef.current = null;
+      stopHeartbeat();
       setStatus('🔌 연결 종료됨');
     }
   };
@@ -51,11 +52,11 @@ function App() {
     let jwtToken = "";
 
     if (testId === "m") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDA5LCJleHAiOjE3NDY5ODI2MDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.nXuQrH2lJoitHtksb_i-Ve0aB5Im7Xd2EdznYQZz-j8";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODIzLCJleHAiOjE3NDcwMTQwMjMsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.a9g5MItZy1BnfiieG4ZeEKcMxOCebQyhazyc0v3ismg";
     } else if (testId === "a") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDU4LCJleHAiOjE3NDY5ODI2NTgsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.lZidPt5MwgEIu9vBV4Ua2vhw9XWmS07hOXeqzahxQu8";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODM2LCJleHAiOjE3NDcwMTQwMzYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.51_Hs2Ofcz39IRGbPADcufjQfhsILMC4kwZrnAbvmvQ";
     } else {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDI0LCJleHAiOjE3NDY5ODI2MjQsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.rtpgqJSU2zRQMNBIZ4TQ32Al8OXLwZp1QJw80hiGCbw";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODQ2LCJleHAiOjE3NDcwMTQwNDYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.3SRdOiFx97Ak3JIEQhR3Hksh4451A7BWDmg9FdQiC7o";
     }
 
     const route = "queue.status";
@@ -76,8 +77,7 @@ function App() {
 
     const client = new RSocketClient({
       transport: new RSocketWebSocketClient(
-          { url: 'ws://192.168.0.31:7010/rsocket' } // 로컬
-          // { url: 'wss://queue.pass-dev-aptner.com/rsocket' }, // 개발서버
+          { url: WS_URL } // 로컬
           , BufferEncoders
       ),
       setup: {
@@ -130,14 +130,12 @@ function App() {
             retryRef.current = 0;
             setStatus('🎉 입장 가능! 스트림 종료');
 
-            // 하트비트 전송
-            sendHeartbeat(jwtToken);
-
             // TODO. 완료 이후 클라이언트 처리 필요 사항
-            //  0. 서버 연결 종료 후 재시도 완료되면 다시 onComplete 호출되는데 이때 이미 리다이렉팅 된 클라이언트는 화면 리다이렉팅 하지 않을 방법
-            //  1. 앱에서 백그라운드 진입 시 (홈으로 이동) 5~10분[정책 정의필요] 이후 연결 종료
+            //  0. 서버 연결 종료 후 재시도 완료되면 다시 onComplete 호출되는데 이때 이미 다음 화면으로 리다이렉팅 된 클라이언트는 화면 리다이렉팅 하지 않는 기능 적용
+            //  1. 앱에서 백그라운드 진입 시 (Ex. 홈으로 이동) 5~10분[정책 정의필요] 이후 연결 종료 (이론상 백그라운드 진입 하면 setInterval 쏘지 않는 걸로 추측됨)
             //  2. 하트비트 체크를 통해 클라이언트가 살아있는지 확인 죽었다면 연결 종료
-            //   -> 하트비트 호출 시점 2회 : onComplete / 결제 창 진입 시
+            //   -> 하트비트 호출 시점 : 처음 연결 완료 시점 부터 3분 주기 호출
+            //   -> 소켓 연결 해제 시점에 setInterval 작동 안하도록 필요
           },
         });
 
@@ -169,6 +167,9 @@ function App() {
             console.error('❌ connectionStatus 오류 발생:', error);
           },
         });
+
+        // 하트비트 시작
+        startHeartbeat(jwtToken);
       },
       onError: error => {
         console.error(`❌ 연결 실패 (${retryRef.current + 1}/${MAX_RETRY}):`, error);
@@ -186,8 +187,6 @@ function App() {
 
   const test2 = () => {
     const TEST_USER_COUNT = testCount; // 테스트 수량: 100, 1000, 5000, 10000 등으로 조정 가능
-    // const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
-    const WS_URL = 'ws://192.168.0.31:7010/rsocket';
     const ROUTE = 'queue.test';
     const CHANNEL = 'GOLF_FIRST_COME';
     const JWT_TOKEN = 'test';
@@ -214,7 +213,28 @@ function App() {
 
       // 재연결 로직 변수
       let retryCount = 0;
-      const maxRetry = 3;
+      const maxRetry = 10;
+
+      // 하트비트 인터벌을 기억할 변수
+      let heartbeatInterval = null;
+
+      function startTestHeartbeat(socket) {
+        testSendHeartbeat(JWT_TOKEN, data, socket); // 최초 한 번 전송
+
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+        }
+        heartbeatInterval = setInterval(() => {
+          testSendHeartbeat(JWT_TOKEN, data, socket);
+        }, 120_000); // 테스트 2분
+      }
+
+      function stopTestHeartbeat() {
+        if (heartbeatInterval) {
+          clearInterval(heartbeatInterval);
+          heartbeatInterval = null;
+        }
+      }
 
       function attemptConnection() {
         const client = new RSocketClient({
@@ -270,9 +290,9 @@ function App() {
               onComplete: () => {
                 console.log("완료에 진입함!");
                 setSuccessCount(prev => prev + 1);
-                testSendHeartbeat(JWT_TOKEN, data, socket)
 
                 setTimeout(() => {
+                  stopTestHeartbeat();
                   socket.close();
                 }, leaveAfter * 1000);
               }
@@ -292,11 +312,13 @@ function App() {
                   } else {
                     console.error(`❌ ${userId} 스트림 재시도 초과`);
                     setFailCount(prev => prev + 1);
+                    stopTestHeartbeat()
                     socket.close();
                   }
 
                 } else if(status.kind === 'CLOSED') {
                   console.log(`@@ 클라이언트 소켓 닫음`);
+                  stopTestHeartbeat()
                   socket.close();
                 }
               },
@@ -304,9 +326,14 @@ function App() {
                 console.error('❌ connectionStatus 오류 발생:', error);
               },
             });
+
+            // 테스트 하트비트 시작
+            startTestHeartbeat(socket);
           },
           onError: error => {
             console.error(`연결 실패 (${retryCount + 1}/${maxRetry}):`, error);
+            stopTestHeartbeat();
+
             setStatus(`연결 실패, 재시도 중... (${retryCount + 1}/${maxRetry})`);
             if (++retryCount <= maxRetry) {
               setTimeout(attemptConnection, 5000); // 5초 후 재시도
@@ -354,11 +381,11 @@ function App() {
     let jwtToken = "";
 
     if (testId === "m") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDA5LCJleHAiOjE3NDY5ODI2MDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.nXuQrH2lJoitHtksb_i-Ve0aB5Im7Xd2EdznYQZz-j8";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODIzLCJleHAiOjE3NDcwMTQwMjMsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.a9g5MItZy1BnfiieG4ZeEKcMxOCebQyhazyc0v3ismg";
     } else if (testId === "a") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDU4LCJleHAiOjE3NDY5ODI2NTgsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.lZidPt5MwgEIu9vBV4Ua2vhw9XWmS07hOXeqzahxQu8";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODM2LCJleHAiOjE3NDcwMTQwMzYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.51_Hs2Ofcz39IRGbPADcufjQfhsILMC4kwZrnAbvmvQ";
     } else {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDI0LCJleHAiOjE3NDY5ODI2MjQsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.rtpgqJSU2zRQMNBIZ4TQ32Al8OXLwZp1QJw80hiGCbw";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODQ2LCJleHAiOjE3NDcwMTQwNDYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.3SRdOiFx97Ak3JIEQhR3Hksh4451A7BWDmg9FdQiC7o";
     }
 
     const route = "queue.exit";
@@ -394,6 +421,9 @@ function App() {
     });
   };
 
+
+  // --------------- 하트비트 관련 Start -----------------
+
   const sendHeartbeat = (jwtToken: string) => {
     if (!socketRef.current) return;
 
@@ -412,6 +442,29 @@ function App() {
 
     console.log("❤️ 하트비트 전송 완료");
   };
+
+  const startHeartbeat = (jwtToken) => {
+    sendHeartbeat(jwtToken); // 최초 1회 전송
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+
+    heartbeatIntervalRef.current = setInterval(() => {
+      sendHeartbeat(jwtToken);
+    }, 180_000); // 3분 = 180,000ms
+
+    console.log('▶️ 하트비트 시작됨');
+  };
+
+  const stopHeartbeat = () => {
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+      heartbeatIntervalRef.current = null;
+      console.log('⏹ 하트비트 중단됨');
+    }
+  };
+
+  // --------------- 하트비트 관련 End -----------------
 
   const closeSocket = () => {
     cleanupSocket()
