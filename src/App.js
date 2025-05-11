@@ -144,7 +144,13 @@ function App() {
           onSubscribe: sub => sub.request(2147483647),
           onNext: status => {
             console.log("status : ", status);
-            if (status.kind === 'ERROR') {
+            if (status.kind === 'CONNECTED') {
+              startHeartbeat(jwtToken); // ✅ 연결 성공 시 하트비트 시작
+            } else if(status.kind === 'CLOSED') {
+              cleanupSocket(); // 소켓 정리
+              console.log(`@@ 클라이언트 소켓 닫음`);
+              setStatus('🔌 소켓 닫힘');
+            } else if (status.kind === 'ERROR') {
               console.warn('❌ 서버와의 연결 끊김 감지!');
               setStatus('🔌 서버 연결 끊김');
 
@@ -157,19 +163,12 @@ function App() {
                 cleanupSocket();
               }
 
-            } else if(status.kind === 'CLOSED') {
-              cleanupSocket(); // 소켓 정리
-              console.log(`@@ 클라이언트 소켓 닫음`);
-              setStatus('🔌 소켓 닫힘');
             }
           },
           onError: error => {
             console.error('❌ connectionStatus 오류 발생:', error);
           },
         });
-
-        // 하트비트 시작
-        startHeartbeat(jwtToken);
       },
       onError: error => {
         console.error(`❌ 연결 실패 (${retryRef.current + 1}/${MAX_RETRY}):`, error);
@@ -320,15 +319,14 @@ function App() {
                   console.log(`@@ 클라이언트 소켓 닫음`);
                   stopTestHeartbeat()
                   socket.close();
+                } else if (status.kind === 'CONNECTED') {
+                  startTestHeartbeat(socket); // ✅ 연결 성공 시 하트비트 시작
                 }
               },
               onError: error => {
                 console.error('❌ connectionStatus 오류 발생:', error);
               },
             });
-
-            // 테스트 하트비트 시작
-            startTestHeartbeat(socket);
           },
           onError: error => {
             console.error(`연결 실패 (${retryCount + 1}/${maxRetry}):`, error);
