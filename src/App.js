@@ -131,11 +131,11 @@ function App() {
             setStatus('🎉 입장 가능! 스트림 종료');
 
             // 하트비트 전송
-            sendHeartbeat();
+            sendHeartbeat(jwtToken);
 
             // TODO. 완료 이후 클라이언트 처리 필요 사항
             //  0. 서버 연결 종료 후 재시도 완료되면 다시 onComplete 호출되는데 이때 이미 리다이렉팅 된 클라이언트는 화면 리다이렉팅 하지 않을 방법
-            //  1. 앱에서 백그라운드 진입 시 (홈으로 이동) 5~10분[정책 정의필요] 이후 연결 종료 정책
+            //  1. 앱에서 백그라운드 진입 시 (홈으로 이동) 5~10분[정책 정의필요] 이후 연결 종료
             //  2. 하트비트 체크를 통해 클라이언트가 살아있는지 확인 죽었다면 연결 종료
             //   -> 하트비트 호출 시점 2회 : onComplete / 결제 창 진입 시
           },
@@ -159,7 +159,6 @@ function App() {
                 cleanupSocket();
               }
 
-              // cleanupSocket(); // 소켓 정리
             } else if(status.kind === 'CLOSED') {
               cleanupSocket(); // 소켓 정리
               console.log(`@@ 클라이언트 소켓 닫음`);
@@ -187,13 +186,13 @@ function App() {
 
   const test2 = () => {
     const TEST_USER_COUNT = testCount; // 테스트 수량: 100, 1000, 5000, 10000 등으로 조정 가능
-    const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
-    // const WS_URL = 'ws://localhost:7010/rsocket';
+    // const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
+    const WS_URL = 'ws://192.168.0.31:7010/rsocket';
     const ROUTE = 'queue.test';
     const CHANNEL = 'GOLF_FIRST_COME';
     const JWT_TOKEN = 'test';
 
-    const generateUserId = () => '11' + Math.floor(100000 + Math.random() * 900000);
+    const generateUserId = () => '12' + Math.floor(100000 + Math.random() * 900000);
     const getRandomLeaveSeconds = () => Math.floor(Math.random() * (60 - 30 + 1)) + 30; // 최소 20초 ~ 60초
 
     for (let i = 1; i < TEST_USER_COUNT+1; i++) {
@@ -201,14 +200,16 @@ function App() {
       const leaveAfter = getRandomLeaveSeconds();
       const data = { memberId: userId, channel: CHANNEL, facilityId: "34", aptId: "1100000001" };
 
-      const authMetadataBuffer = encodeBearerAuthMetadata(JWT_TOKEN);
-      const routeMetadataBuffer = encodeRoute(ROUTE);
+      const routeMetadata = encodeRoute(ROUTE);
+      const authMetadata = encodeBearerAuthMetadata(JWT_TOKEN);
 
       const compositeMetadata = encodeCompositeMetadata([
-        [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadataBuffer],
+        [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadata],
+        [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadata],
       ]);
+
       const setupMetadata = encodeCompositeMetadata([
-        [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadataBuffer],
+        [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadata],
       ]);
 
       // 재연결 로직 변수
@@ -221,8 +222,8 @@ function App() {
           setup: {
             dataMimeType: 'application/json',
             metadataMimeType: 'message/x.rsocket.composite-metadata.v0',
-            keepAlive: 10000,
-            lifetime: 30000,
+            keepAlive: 180000,
+            lifetime: 720000,
             payload: {
               data: null,
               metadata: setupMetadata,
@@ -234,7 +235,6 @@ function App() {
           },
         });
 
-        const memberPositions = {};
 
         client.connect().subscribe({
           onComplete: socket => {
@@ -243,45 +243,66 @@ function App() {
               metadata: compositeMetadata,
             });
 
+            const memberPositions = {};
+
             sub.subscribe({
               onSubscribe: s => s.request(2147483647),
               onNext: payload => {
+                retryCount = 0;
                 const payloadData = JSON.parse(payload.data.toString('utf8'));
-                const memberId = payloadData.memberId;
-                const position = payloadData.position;
+                const { position, totalWaiting } = payloadData;
 
-                if (!memberPositions[memberId]) {
-                  memberPositions[memberId] = { first: position, latest: position };
+                if (!memberPositions[userId]) {
+                  memberPositions[userId] = { first: position, latest: position };
                 } else {
-                  memberPositions[memberId].latest = position;
+                  memberPositions[userId].latest = position;
                 }
 
-                const first = memberPositions[memberId].first;
-                const displayText = `[최초순번: ${first}] 받은 순번: ${position}`;
-
-                // 화면 표시용 데이터 추가
+                const displayText = `[최초순번: ${memberPositions[userId].first}] 받은 순번: ${position}`;
                 setQueue(prev => [...prev, { displayText, ...payloadData }]);
-                setTotalWating(payloadData.totalWaiting);
-                console.log(`✅ ${i} 번째 회원 순번 : ${payloadData.position}, 총 대기 인원 : ${payloadData.totalWaiting}`);
+                setTotalWating(totalWaiting);
+
+                console.log(`✅ ${i}번째 유저 순번: ${position}, 대기: ${totalWaiting}`);
               },
               onError: error => {
                 console.log(`❌ ${userId} 스트림 에러: ${error.message}`);
-                if (++retryCount <= MAX_RETRY) {
-                  console.log(`🔁 ${userId} 스트림 재시도 ${retryCount}/3`);
-                  setTimeout(attemptConnection, 10000); // 소켓 완전 재시작
-                } else {
-                  console.error(`❌${i} 번째 회원 ${userId} error:`, error);
-                  setFailCount(prev => prev + 1);
-                  socket.close();
-                }
               },
               onComplete: () => {
-                console.error("완료에 진입함!");
+                console.log("완료에 진입함!");
                 setSuccessCount(prev => prev + 1);
+                testSendHeartbeat(JWT_TOKEN, data, socket)
+
                 setTimeout(() => {
                   socket.close();
                 }, leaveAfter * 1000);
               }
+            });
+
+            socket.connectionStatus().subscribe({
+              onSubscribe: sub => sub.request(2147483647),
+              onNext: status => {
+                console.log("status : ", status);
+                if (status.kind === 'ERROR') {
+                  console.warn('❌ 서버와의 연결 끊김 감지!');
+                  setStatus('🔌 서버 연결 끊김');
+
+                  if (++retryCount < MAX_RETRY) {
+                    console.log(`🔁 ${userId} 재연결 시도 (${retryCount})`);
+                    setTimeout(attemptConnection, 10000);
+                  } else {
+                    console.error(`❌ ${userId} 스트림 재시도 초과`);
+                    setFailCount(prev => prev + 1);
+                    socket.close();
+                  }
+
+                } else if(status.kind === 'CLOSED') {
+                  console.log(`@@ 클라이언트 소켓 닫음`);
+                  socket.close();
+                }
+              },
+              onError: error => {
+                console.error('❌ connectionStatus 오류 발생:', error);
+              },
             });
           },
           onError: error => {
@@ -300,6 +321,28 @@ function App() {
       attemptConnection(); // 최초 연결 시도
     } // 모든 요청은 거의 동시에 발생
   }
+
+
+  const testSendHeartbeat = (jwtToken: string, data: any, socket: any) => {
+    const routeMetadata = encodeRoute("queue.test-heart-beat");
+    const authMetadata = encodeBearerAuthMetadata(jwtToken);
+
+    const heartbeatMetadata = encodeCompositeMetadata([
+      [WellKnownMimeType.MESSAGE_RSOCKET_AUTHENTICATION, authMetadata],
+      [WellKnownMimeType.MESSAGE_RSOCKET_ROUTING, routeMetadata],
+    ]);
+
+    socket.fireAndForget({
+      data: Buffer.from(JSON.stringify(data)),
+      metadata: heartbeatMetadata,
+    });
+
+    console.log("❤️ 하트비트 전송 완료");
+  };
+
+
+
+  // -------- TEST END
 
   // 대기열 나가기 시 연결된 소켓을 이용해 exit 요청을 보냄 (호출 예시 - 백엔드 개선 필요)
   const exitQueue = () => {
@@ -351,18 +394,8 @@ function App() {
     });
   };
 
-  const sendHeartbeat = () => {
+  const sendHeartbeat = (jwtToken: string) => {
     if (!socketRef.current) return;
-
-    let jwtToken = "";
-
-    if (testId === "m") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDA5LCJleHAiOjE3NDY5ODI2MDksImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.nXuQrH2lJoitHtksb_i-Ve0aB5Im7Xd2EdznYQZz-j8";
-    } else if (testId === "a") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDU4LCJleHAiOjE3NDY5ODI2NTgsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.lZidPt5MwgEIu9vBV4Ua2vhw9XWmS07hOXeqzahxQu8";
-    } else {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTM5NDI0LCJleHAiOjE3NDY5ODI2MjQsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.rtpgqJSU2zRQMNBIZ4TQ32Al8OXLwZp1QJw80hiGCbw";
-    }
 
     const authMetadataBuffer = encodeBearerAuthMetadata(jwtToken);
     const heartbeatRouteMetadata = encodeRoute('queue.heartbeat');
