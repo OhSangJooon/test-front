@@ -29,8 +29,8 @@ function App() {
 
 
   const MAX_RETRY = 10;
-  const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
-  // const WS_URL = 'ws://192.168.0.31:7010/rsocket';
+  // const WS_URL = 'wss://queue.pass-dev-aptner.com/rsocket';
+  const WS_URL = 'ws://192.168.0.31:7010/rsocket';
 
   const cleanupSocket = () => {
     if (socketRef.current) {
@@ -52,11 +52,11 @@ function App() {
     let jwtToken = "";
 
     if (testId === "m") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODIzLCJleHAiOjE3NDcwMTQwMjMsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.a9g5MItZy1BnfiieG4ZeEKcMxOCebQyhazyc0v3ismg";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMTkwLCJleHAiOjE3NDcwMTYzOTAsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.QyBL2RhRUQhJW3VemZ3NktlcxYMSMne8OslE-BZuDAY";
     } else if (testId === "a") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODM2LCJleHAiOjE3NDcwMTQwMzYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.51_Hs2Ofcz39IRGbPADcufjQfhsILMC4kwZrnAbvmvQ";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMjEyLCJleHAiOjE3NDcwMTY0MTIsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.nRELOkhWZqgnX_zbSp9yJzBRR1DwF9iilrgQiqk-Txc";
     } else {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODQ2LCJleHAiOjE3NDcwMTQwNDYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.3SRdOiFx97Ak3JIEQhR3Hksh4451A7BWDmg9FdQiC7o";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMjIxLCJleHAiOjE3NDcwMTY0MjEsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.3_V7QwLe2aZqQ1HsQziSlUYUdnkneUaVL2RaoTaq97k";
     }
 
     const route = "queue.status";
@@ -144,13 +144,7 @@ function App() {
           onSubscribe: sub => sub.request(2147483647),
           onNext: status => {
             console.log("status : ", status);
-            if (status.kind === 'CONNECTED') {
-              startHeartbeat(jwtToken); // ✅ 연결 성공 시 하트비트 시작
-            } else if(status.kind === 'CLOSED') {
-              cleanupSocket(); // 소켓 정리
-              console.log(`@@ 클라이언트 소켓 닫음`);
-              setStatus('🔌 소켓 닫힘');
-            } else if (status.kind === 'ERROR') {
+            if (status.kind === 'ERROR') {
               console.warn('❌ 서버와의 연결 끊김 감지!');
               setStatus('🔌 서버 연결 끊김');
 
@@ -163,12 +157,19 @@ function App() {
                 cleanupSocket();
               }
 
+            } else if(status.kind === 'CLOSED') {
+              cleanupSocket(); // 소켓 정리
+              console.log(`@@ 클라이언트 소켓 닫음`);
+              setStatus('🔌 소켓 닫힘');
             }
           },
           onError: error => {
             console.error('❌ connectionStatus 오류 발생:', error);
           },
         });
+
+        // 하트비트 시작
+        startHeartbeat(jwtToken);
       },
       onError: error => {
         console.error(`❌ 연결 실패 (${retryRef.current + 1}/${MAX_RETRY}):`, error);
@@ -319,14 +320,15 @@ function App() {
                   console.log(`@@ 클라이언트 소켓 닫음`);
                   stopTestHeartbeat()
                   socket.close();
-                } else if (status.kind === 'CONNECTED') {
-                  startTestHeartbeat(socket); // ✅ 연결 성공 시 하트비트 시작
                 }
               },
               onError: error => {
                 console.error('❌ connectionStatus 오류 발생:', error);
               },
             });
+
+            // 테스트 하트비트 시작
+            startTestHeartbeat(socket);
           },
           onError: error => {
             console.error(`연결 실패 (${retryCount + 1}/${maxRetry}):`, error);
@@ -379,11 +381,11 @@ function App() {
     let jwtToken = "";
 
     if (testId === "m") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODIzLCJleHAiOjE3NDcwMTQwMjMsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.a9g5MItZy1BnfiieG4ZeEKcMxOCebQyhazyc0v3ismg";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMTkwLCJleHAiOjE3NDcwMTYzOTAsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.QyBL2RhRUQhJW3VemZ3NktlcxYMSMne8OslE-BZuDAY";
     } else if (testId === "a") {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODM2LCJleHAiOjE3NDcwMTQwMzYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.51_Hs2Ofcz39IRGbPADcufjQfhsILMC4kwZrnAbvmvQ";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDQxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMjEyLCJleHAiOjE3NDcwMTY0MTIsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDA0MSJ9.nRELOkhWZqgnX_zbSp9yJzBRR1DwF9iilrgQiqk-Txc";
     } else {
-      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMTIxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTcwODQ2LCJleHAiOjE3NDcwMTQwNDYsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDEyMSJ9.3SRdOiFx97Ak3JIEQhR3Hksh4451A7BWDmg9FdQiC7o";
+      jwtToken = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMTAwMDAwMDAxIiwiaXNzIjoicGFzcy1hdXRoIiwiaWF0IjoxNzQ2OTczMjIxLCJleHAiOjE3NDcwMTY0MjEsImFwdG5lci1wYXNzLWF1dGgtbWV0aG9kIjoiTUVNQkVSX0lEIiwiYXB0bmVyLXBhc3MtZG9tYWluIjoiTU9CSUxFIiwiY2xpZW50LWlwIjoiMDowOjA6MDowOjA6MDoxIiwianRpIjoiMTEwMDAwMDAwMSJ9.3_V7QwLe2aZqQ1HsQziSlUYUdnkneUaVL2RaoTaq97k";
     }
 
     const route = "queue.exit";
